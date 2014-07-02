@@ -1,159 +1,354 @@
 #!/bin/sh /etc/rc.common
-#Copyright (C) 2013 CZ.NIC z.s.p.o. (http://www.nic.cz/)
+# Copyright (C) 2007-2013 OpenWrt.org
 START=61
 
-CONFIGFILE="/var/etc/unbound/unbound.conf"
+SERVICE_USE_PID=1
 
-header() {
-    cat > "$CONFIGFILE" <<-EOF
-# auto-generated config file from /etc/config/unbound
-EOF
+CONFIGFILE="/etc/unbound/unbound.conf"
+
+writeconf() {
+	local opt="$1"
+	local val="$2"
+	local extra="$3"
+
+	# wrap values with spaces or / in quotes
+	if [ `echo $val | grep -c "[.[:space:]/]"` -gt 0 ]; then
+		val="\"$val\""
+	fi
+
+	if [ -z "$val" ]; then
+		echo "${opt}: ${val} ${extra}" >> $CONFIGFILE
+	else
+		echo "	${opt}: ${val} ${extra}" >> $CONFIGFILE
+	fi
 }
 
+add_bool() {
+	local section="$1"
+	local option="$2"
 
-add_section() {
-    section="$1"
-    echo "$section:" >> "$CONFIGFILE"
+	if [ -z "$3" ]; then
+		local config="$2"
+	else
+		local config="$3"
+   fi
+
+	config_get value "$section" "$option"
+	[ -z "$value" ] && return 0
+
+	if [ "$value" -eq 0 ]; then
+		value="no"
+	elif [ "$value" -eq 1 ]; then
+		value="yes"
+	else
+		return 0
+	fi
+
+	writeconf "$config" "$value"
 }
 
-add_inculde() {
-    include_path="$1"
-    echo "include: \"$include_path\"" >> "$CONFIGFILE"
+add_param() {
+	local section="$1"
+	local option="$2"
+	
+	if [ -z "$3" ]; then
+		local config="$2"
+	else
+		local config="$3"
+	fi
+
+	config_get value "$section" "$option"
+	[ -z "$value" ] && return 0
+
+	writeconf "$config" "$value"
 }
 
-set_parameter() {
-    local var="$1"
-    local opt="$2"
-    local def="$3"
-    local val
+add_server() {
+	local cfg="$1"
 
-    config_get val "$section" "$var"
-    val=${val:-$def}
-    echo -e "\t$opt: $val" >> "$CONFIGFILE"
+	add_param "$cfg" "include"
+
+	writeconf "server"
+	add_param "$cfg" "verbosity"
+	add_param "$cfg" "statistics_interval" "statistics-interval"
+	add_bool "$cfg" "statistics_cumulative" "statistics-cumulative"
+	add_bool "$cfg" "extended_statistics" "extended-statistics"
+	add_param "$cfg" "port"
+	config_list_foreach "$cfg" "interface" add_list "interface"
+	add_param "$cfg" "interface_automatic" "interface-automatic"
+	config_list_foreach "$cfg" "outgoing_interface" add_list "outgoing-interface"
+	add_param "$cfg" "outgoing_port_permit" "outgoing-port-permit"
+	add_param "$cfg" "outgoing_port_avoid" "outgoing-port-avoid"
+	add_param "$cfg" "edns_buffer_size" "edns-buffer-size"
+	add_param "$cfg" "jostle_timeout" "jostle-timeout"
+	add_param "$cfg" "so_rcvbuf" "so-rcvbuf"
+	add_param "$cfg" "so_sndbuf" "so-sndbuf"
+	add_param "$cfg" "cache_min_ttl" "cache-min-ttl"
+	add_param "$cfg" "cache_max_ttl" "cache-max-ttl"
+	add_param "$cfg" "infra_host_ttl" "infra-host-ttl"
+	add_bool "$cfg" "do_ip4" "do-ip4"
+	add_bool "$cfg" "do_ip6" "do-ip6"
+	add_bool "$cfg" "do_udp" "do-udp"
+	add_bool "$cfg" "do_tcp" "do-tcp"
+	add_bool "$cfg" "tcp_upstream" "tcp-upstream"
+	add_bool "$cfg" "ssl_upstream" "ssl-upstream"
+	add_param "$cfg" "ssl_service_key" "ssl-service-key"
+	add_param "$cfg" "ssl_service_pem" "ssl-service-pem"
+	add_param "$cfg" "ssl_port" "ssl-port"
+	add_bool "$cfg" "do_daemonize" "do-daemonize"
+	add_param "$cfg" "chroot"
+	add_param "$cfg" "username"
+	add_param "$cfg" "directory"
+	add_param "$cfg" "logfile"
+	add_bool "$cfg" "use_syslog" "use-syslog"
+	add_bool "$cfg" "log_time_ascii" "log-time-ascii"
+	add_bool "$cfg" "log_queries" "log-queries"
+	config_get tmpval "$cfg" pidfile "/var/run/unbound.pid"
+	writeconf "pidfile" "$tmpval"
+
+	config_get tmpfile "$cfg" "root_hints"
+	if [ ! -z "$tmpfile" ]; then
+		if [ -s $tmpfile ]; then
+			writeconf "root-hints" "$tmpfile"
+		else
+			logger -t unbound "Using built-in root-hints list, this may be out of date."
+		fi
+	fi
+
+	add_bool "$cfg" "hide_identity" "hide-identity"
+	add_param "$cfg" "identity"
+	add_bool "$cfg" "hide_version" "hide-version"
+	add_param "$cfg" "version"
+	add_bool "$cfg" "harden_glue" "harden-glue"
+	add_bool "$cfg" "harden_dnssec_stripped" "harden-dnssec-stripped"
+	add_bool "$cfg" "harden_below_nxdomain" "harden-below-nxdomain"
+	add_bool "$cfg" "harden_referral_path" "harden-referral-path"
+	add_bool "$cfg" "use_caps_for_id" "use-caps-for-id"
+	config_list_foreach "$cfg" "private_address" add_list "private-address" 
+	config_list_foreach "$cfg" "private_domain" add_list "private-domain"
+	add_param "$cfg" "unwanted_reply_threshold" "unwanted-reply-threshold"
+	add_param "$cfg" "do_not_query_address" "do-not-query-address"
+	add_bool "$cfg" "do_not_query_localhost" "do-not-query-localhost"
+	add_bool "$cfg" "prefetch" 
+	add_bool "$cfg" "prefetch_key" "prefetch-key"
+	add_bool "$cfg" "rrset_roundrobin" "rrset-roundrobin"
+	add_bool "$cfg" "minimal_responses" "minimal-responses"
+	add_param "$cfg" "module_config" "module-config"
+	add_param "$cfg" "trust_anchor_file" "trust-anchor-file"
+
+	# make sure the root.key file exists
+	config_get tmpval "$cfg" "root_key"
+	if [ -n $tmpval ]; then
+		if [ ! -e "$tmpval" ] || [ ! -s "$tmpval" ]; then
+			getanchor=`which unbound-anchor`
+			if [ -n "$getanchor" ]; then
+				logger -t unbound "Anchor file is missing, attempting to create one."
+				$getanchor -a "$tmpval"
+				if [ -s "$tmpval" ]; then
+					logger -t unbound "Anchor file created, will attempt to use it."
+					writeconf "auto-trust-anchor-file" "/etc/unbound/root.key"
+				else
+					logger -t unbound "Unable to create anchor file, dnssec will not be validated!"
+				fi
+			else
+				logger -t unbound "Unable to locate or empty root key file, $tmpval, dnssec will not be validated!"
+			fi
+		else
+			writeconf "auto-trust-anchor-file" "/etc/unbound/root.key"
+		fi
+	fi
+
+	add_param "$cfg" "trust_anchor" "trust-anchor"
+	add_param "$cfg" "trusted_keys_file" "trusted-keys-file"
+	add_param "$cfg" "dlv_anchor_file" "dlv-anchor-file"
+	add_param "$cfg" "dlv_anchor" "dlv-anchor"
+	config_list_foreach "$cfg" "domain_insecure" add_list "domain-insecure"
+	add_param "$cfg" "val_override_date" "val-override-date"
+	add_param "$cfg" "val_sig_skew_min" "val-sig-skew-min"
+	add_param "$cfg" "val_sig_skew_max" "val-sig-skew-max"
+	add_param "$cfg" "val_bogus_ttl" "val-bogus-ttl"
+	add_bool "$cfg" "val_clean_additional" "val-clean-additional"
+	add_param "$cfg" "val_log_level" "val-log-level"
+	add_bool "$cfg" "val_permissive_mode" "val-permissive-mode"
+	add_bool "$cfg" "ignore_cd_flag" "ignore-cd-flag"
+	add_param "$cfg" "val_nsec3_keysize_iterations" "val-nsec3-keysize-iterations"
+	add_param "$cfg" "add_holddown" "add-holddown"
+	add_param "$cfg" "del_holddown" "del-holddown"
+	add_param "$cfg" "keep_missing" "keep-missing"
+
+	# check to see if unbound should run with low memory optimizations
+	config_get_bool lowmem "$cfg" "lowmem" 1
+	if [ $lowmem -eq 1 ]; then
+		writeconf "num-threads" "1"
+		writeconf "outgoing-num-tcp" "1"
+		writeconf "incoming-num-tcp" "1"
+		writeconf "outgoing-range" "60"
+		writeconf "msg-buffer-size" "8192" 
+		writeconf "msg-cache-size" "100k"
+		writeconf "msg-cache-slabs" "1"
+		writeconf "rrset-cache-size" "100k"
+		writeconf "rrset-cache-slabs" "1"
+		writeconf "infra-cache-numhosts" "200"
+		writeconf "infra-cache-slabs" "1"
+		writeconf "key-cache-size" "100k"
+		writeconf "key-cache-slabs" "1"
+		writeconf "neg-cache-size" "10k"
+		writeconf "num-queries-per-thread" "30"
+		writeconf "target-fetch-policy" "2 1 0 0 0 0"
+		writeconf "harden-large-queries" "yes"
+		writeconf "harden-short-bufsize" "yes"
+	else
+		add_param "$cfg" "num_threads" "num-threads"
+		add_param "$cfg" "outgoing_num_tcp" "outgoing-num-tcp"
+		add_param "$cfg" "incoming_num_tcp" "incoming-num-tcp"
+		add_param "$cfg" "outgoing_range" "outgoing-range"
+		add_param "$cfg" "msg_buffer_size" "msg-buffer-size"
+		add_param "$cfg" "msg_cache_size" "msg-cache-size"
+		add_param "$cfg" "msg_cache_slabs" "msg-cache-slabs"
+		add_param "$cfg" "rrset_cache_size" "rrset-cache-size"
+		add_param "$cfg" "rrset_cache_slabs" "rrset-cache-slabs"
+		add_param "$cfg" "infra_cache_numhosts" "infra-cache-numhosts"
+		add_param "$cfg" "infra_cache_slabs" "infra-cache-slabs"
+		add_param "$cfg" "key_cache_size" "key-cache-size"
+		add_param "$cfg" "key_cache_slabs" "key-cache-slabs"
+		add_param "$cfg" "neg_cache_size" "neg-cache-size"
+		add_param "$cfg" "num_queries_per_thread" "num-queries-per-thread"
+		add_param "$cfg" "target_fetch_policy" "target-fetch-policy"
+		add_bool "$cfg" "harden_large_queries" "harden-large-queries"
+		add_bool "$cfg" "harden_short_bufsize" "harden-short-bufsize"
+	fi
+
+
 }
 
-set_quoted_parameter() {
-    local var="$1"
-    local opt="$2"
-    local def="$3"
-    local val
+add_remote() {
+	local cfg="$1"
 
-    config_get val "$section" "$var"
-    val=${val:-$def}
-    echo -e "\t$opt: \"$val\"" >> "$CONFIGFILE"
+	writeconf "remote-control"
+	add_bool "$cfg" "control_enable" "control-enable"
+	config_list_foreach "$cfg" "control_interface" add_list "control-interface"
+	add_param "$cfg" "control_port" "control-port"
+	add_param "$cfg" "server_key_file" "server-key-file"
+	add_param "$cfg" "server_cert_file" "server-cert-file"
+	add_param "$cfg" "control_key_file" "control-key-file"
+	add_param "$cfg" "control_cert_file" "control-cert-file"
 }
 
-add_parameter() {
-    val="$1"
-    opt="$2"
-    echo -e "\t$opt: $val" >> "$CONFIGFILE"
+add_list() {
+	local value="$1"
+	local config="$2"
+	writeconf "$config" "$value"
 }
 
-set_multiple_parameters() {
-    local var="$1"
-    local opt="$2"
-    
-    config_list_foreach "$section" "$var" add_parameter "$opt"
+add_access() {
+	local cfg="$1"
+
+	config_get tmpip "$cfg" ipaddr
+	[ -z "$tmpip" ] && return 0
+
+	config_get tmppolicy "$cfg" policy
+	[ -z "$tmppolicy" ] && return 0
+
+	writeconf "access-control" "$tmpip" "$tmppolicy"
 }
 
-#initialize everything 
-init_unbound() {
+add_zone() {
+	local cfg="$1"
 
-    #Clear the config and set header
-    header
+	config_get tmpname "$cfg" name
+	[ -z "$tmpname" ] && return 0
 
-    config_load unbound
+	config_get tmptype "$cfg" type "static"
 
-    #Server Section
-    add_section server
-    set_parameter verbosity verbosity 1
-    set_multiple_parameters interface interface
-    set_parameter port port 53
-    set_parameter outgoing_range outgoing-range 60
-    set_parameter outgoing_num_tcp outgoing-num-tcp 1
-    set_parameter incoming_num_tcp incoming-num-tcp 1
-    set_parameter msg_buffer_size msg-buffer-size 8192
-    set_parameter msg_cache_size msg-cache-size 100k
-    set_parameter msg_cache_slabs msg-cache-slabs 1
-    set_parameter num_queries_per_thread num-queries-per-thread 30
-    set_parameter rrset_cache_slabs rrset-cache-slabs 1
-    set_parameter infra_cache_slabs infra-cache-slabs 1
-    set_parameter infra_cache_numhosts infra-cache-numhosts 200
-    set_multiple_parameters access_control access-control
-    set_quoted_parameter username username ""
-    set_quoted_parameter pidfile pidfile "/var/run/unbound.pid"
-    set_quoted_parameter root_hints root-hints "/etc/unbound/named.cache"
-    set_quoted_parameter target_fetch_policy target-fetch-policy "2 1 0 0 0 0"
-    set_parameter harden_short_bufsize harden-short-bufsize yes
-    set_parameter harden_large_queries harden-large-queries yes
-    set_quoted_parameter auto_trust_anchor_file auto-trust-anchor-file "/etc/unbound/root.key"
-    set_parameter key_cache_size key-cache-size 100k
-    set_parameter key_cache_slabs key-cache-slabs 1
-    set_parameter neg_cache_size neg-cache-size 10k
+	writeconf "local-zone" "$tmpname." "$tmptype"
+}
 
-    #Python section
-    add_section python
-    set_multiple_parameters python_script python-script
+add_host() {
+	local cfg="$1"
 
-    #Remote Control
-    add_section remote-control
+	config_get tmpname "$cfg" name
+	[ -z "$tmpname" ] && return 0
 
-    #Includes
-    config_list_foreach includes include_path add_inculde
+	config_get tmpip "$cfg" ipaddr
+	if [ -n $tmpip ]; then
+		writeconf "local-data" "${tmpname}. IN A ${tmpip}"
+		writeconf "local-data-ptr" "${tmpip} ${tmpname}."
+	fi
 
-    local do_forward
-    config_get_bool do_forward server forward_upstream 1
+	config_get tmpip6 "$cfg" ip6addr
+	if [ -n $tmpip6 ]; then
+		writeconf "local-data" "${tmpname}. IN AAAA ${tmpip6}"
+		writeconf "local-data-ptr" "${tmpip6} ${tmpname}."
+	fi
+}
 
-    if [ "$do_forward" = "1" ] ; then
-        local SERVERS
-        SERVERS=$(sed -ne 's/^nameserver \(.*\)/\1/p' /tmp/resolv.conf.auto | sort)
-        if [ "$SERVERS" ] ; then
-            (
-            echo 'forward-zone:'
-            echo '	name: "."'
-            echo '	forward-first: yes'
-            for SERVER in $SERVERS ; do
-                echo "	forward-addr: $SERVER"
-            done
-            ) >> "$CONFIGFILE"
-        fi
-        md5sum /tmp/resolv.conf.auto | cut -f1 -d\ >/tmp/resolv.conf.auto.last.md5
-    fi
+add_forward_stub() {
+	local cfg="$1"
+	local mode="$2"
+
+	config_get tmpname "$cfg" "name"
+	if [ -z "$tmpname" ]; then
+		logger -t unbound "${mode} zone specified but no name provided!"
+		return 0
+	fi
+
+	# should we use resolv.conf?
+	config_get_bool tmpval "$cfg" "useresolv" 0
+	if [ $tmpval -eq 1 ]; then
+		config_get tmpfile "$cfg" "resolvfile"
+		if [ -z "$tmpfile" ]; then
+			logger -t unbound "resolvfile not specified but \"useresolv\" enabled!"
+			return 0
+		else
+			if [ -s $tmpfile ]; then
+				tmpaddrs=$(grep nameserver ${tmpfile} | awk '{ print $2 }')
+			fi
+		fi
+	else
+		config_get tmpaddrs "$cfg" "ipaddr"
+		config_get tmphosts "$cfg" "hostname"
+
+		if [ -z "$tmpaddrs" ] && [ -z "$tmphosts" ]; then
+			logger -t unbound "No ipaddr or hostname specified!"
+			return 0
+		fi
+	fi
+
+	writeconf "${mode}-zone"
+	writeconf "name" "$tmpname"
+
+	for tmpaddr in $tmpaddrs
+	do
+		writeconf "${mode}-addr" "$tmpaddr"
+	done
+
+	for tmphost in $tmphosts
+	do
+		writeconf "${mode}-host" "$tmphost"
+	done
+
+	add_bool "$cfg" "${mode}_prime" "${mode}-prime"
+	add_bool "$cfg" "${mode}_first" "${mode}-first"
 }
 
 start() {
+	config_load unbound
 
-    mkdir -p $(dirname "$CONFIGFILE")
+	mkdir -p $(dirname $CONFIGFILE)
+	echo "# Auto generated from /etc/config/unbound" > $CONFIGFILE
 
-    init_unbound
-    unbound || (
-        sleep 2 # There are temporary failures with ports in unbound sometimes, try again after a while
-	unbound
-    )
-}
+	config_foreach add_server server
+	config_foreach add_access access
+	config_foreach add_zone zone
+	config_foreach add_host host
+	config_foreach add_forward_stub forward "forward"
+	config_foreach add_forward_stub stub "stub"
+	config_foreach add_remote remote
 
-reload() {
-
-    mkdir -p $(dirname "$CONFIGFILE")
-
-    init_unbound
-
-    local pidfile
-    config_get pidfile server pidfile
-
-    if [ -f "$pidfile" ] ; then
-        kill -HUP $(cat $pidfile)
-    fi
+	service_start /usr/sbin/unbound -c $CONFIGFILE
 }
 
 stop() {
-    config_load unbound
-
-    local pidfile
-    config_get pidfile server pidfile
-
-    if [ -f "$pidfile" ] ; then
-        kill $(cat $pidfile) ; rm "$pidfile"
-    fi
-    sleep 1 # For cleanup of ports and such
+	service_stop /usr/sbin/unbound
 }
+
