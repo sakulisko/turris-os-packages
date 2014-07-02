@@ -135,6 +135,7 @@ add_server() {
 	add_bool "$cfg" "minimal_responses" "minimal-responses"
 	add_param "$cfg" "module_config" "module-config"
 	add_param "$cfg" "trust_anchor_file" "trust-anchor-file"
+	add_param "$cfg" "auto_trust_anchor_file" "auto-trust-anchor-file"
 
 	# make sure the root.key file exists
 	config_get tmpval "$cfg" "root_key"
