@@ -116,8 +116,7 @@ CONFIGURE_ARGS += \
 	--with-ldns="$(STAGING_DIR)/usr" \
 	--with-libexpat="$(STAGING_DIR)/usr" \
 	--with-ssl="$(STAGING_DIR)/usr" \
-	--without-pthreads \
-	--with-pythonmodule
+	--without-pthreads
 
 define Package/unbound/conffiles
 /etc/unbound/unbound.conf
