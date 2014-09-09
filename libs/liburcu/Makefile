@@ -8,12 +8,12 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=liburcu
-PKG_VERSION:=0.8.4
+PKG_VERSION:=0.7.6
 PKG_RELEASE:=1
 
 PKG_SOURCE:=userspace-rcu-$(PKG_VERSION).tar.bz2
 PKG_SOURCE_URL:=https://lttng.org/files/urcu/
-PKG_MD5SUM:=2ca6671b20a550aa0e8020a1a9a96fd4
+PKG_MD5SUM:=4c1ecb4bdcd43e36dfdffdd297023c8b
 PKG_BUILD_DIR:=$(BUILD_DIR)/userspace-rcu-$(PKG_VERSION)
 
 PKG_BUILD_PARALLEL:=1
